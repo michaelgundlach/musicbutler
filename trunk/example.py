@@ -1,4 +1,3 @@
-
 from musicbutler import MusicButler
 
 collection = {'radio head':['o k computer', 'in rainbows'], 'nine inch nails':['the downward spiral', 'perfection'],
@@ -12,4 +11,8 @@ for (band, albums) in collection.items():
     for album in albums:
         jimmy.addalbum(band, album)
 
-jimmy.listen()
+jimmy.startlistening()
+
+import time
+while jimmy.islistening():
+    time.sleep(.1)

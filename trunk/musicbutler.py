@@ -1,6 +1,7 @@
 import speech
 import random
 import thread
+import time
 
 class MusicButler:
     def __init__(self, name):
@@ -12,20 +13,23 @@ class MusicButler:
     def addalbum(self, band, album):
         band = band.lower()
         album = album.lower()
-        
+
         collection = self._collection
-        
+
         if band not in collection:
             collection[band] = []
         if album not in collection[band]:
             collection[band].append(album)
             collection[band].sort()
 
-        if self._speechlistener: # update our knowledge
+        if self.islistening(): # update our knowledge
             self.stoplistening()
-            self.listen()
+            self.startlistening()
 
-    def listen(self):
+    def islistening(self):
+        return not not self._speechlistener
+
+    def startlistening(self):
         collection = self._collection
         name = self.name
         actions = {}
@@ -34,7 +38,7 @@ class MusicButler:
         for (band, albums) in collection.items():
             for album in albums:
                 actions["%s, play some %s %s" % (name, band, album)] = (self._play, band, album)
-                
+
         for band in collection.keys():
             command = (self._playband, band)
             actions["%s, play some %s, any album" % (name, band)] = command
@@ -43,11 +47,11 @@ class MusicButler:
             actions["%s, what %s albums do i have?" % (name, band)] = (self._listalbums, band)
             actions["%s, what albums do i have by %s?" % (name, band)] = (self._listalbums, band)
             actions["%s, what albums do i have?" % (name)] = (self._listalbums,)
-            
+
         for albums in collection.values():
             for album in albums:
                 actions["%s, play the album %s" % (name, album)] = (self._playalbum, album)
-                
+
         actions["%s, stop playing" % name] = (self._stopthemusic,)
         actions["%s, turn off" % name] = (self._turnoff,)
         actions["%s, what bands do i have?" % name] = (self._listbands,)
@@ -58,23 +62,23 @@ class MusicButler:
         actions["%s, more help" % name] = (self._morehelp,)
         actions["What's your name?"] = (self._sayname,)
 
-        if self._speechlistener:
+        if self.islistening():
             self.stoplistening()
 
         self._actions = actions
-        self._speechlistener = speech.listenfor(actions.keys(), self._respond_to_command)
-        speech.keeplistening()
-        self.say("your selection?")
-        
+        self._speechlistener = speech.listenfor(
+                actions.keys(), self._respond_to_command)
+        self.say("Your selection?")
+
     def stoplistening(self):
-        if self._speechlistener:
-            speech.stoplistening(self._speechlistener)
+        if self.islistening():
+            self._speechlistener.stoplistening()
         self._speechlistener = None
 
     def say(self, phrase):
         print phrase
         print
-        speech.say(phrase)        
+        speech.say(phrase)
 
     def _respond_to_command(self, phrase, listener):
         if phrase not in self._actions:
@@ -171,7 +175,7 @@ class MusicButler:
             choice = choices.pop()
             message += "%s, " % choice
         message += "and %s." % choices[0]
-            
+
         self.say(message)
 
     def _listalbums(self, bandOfChoice=None):
@@ -182,7 +186,7 @@ class MusicButler:
             albums = [ "%s by %s" % (album, band)
                        for band in collection
                        for album in collection[band] ]
-                    
+
         indexes = range(len(albums))
         random.shuffle(indexes)
 
@@ -204,13 +208,13 @@ class MusicButler:
             message = "Here are 3 albums out of your %d" % len(albums)
         else:
             message = "You have %d albums" % len(albums)
-            
+
         if bandOfChoice:
             message += " by %s" % bandOfChoice
 
         count = min(3, len(albums))
         choices = [ albums[indexes[i]] for i in range(count) ]
-        
+
         message += ": "
         while len(choices) > 1:
             choice = choices.pop()
