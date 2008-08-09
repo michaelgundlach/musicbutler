@@ -3,7 +3,7 @@ from setuptools import setup
 setup(name='musicbutler',
       version='0.1.3',
       py_modules=['musicbutler'],
-      install_requires=['speech'],
+      install_requires=['speech', 'mutagen'],
 
       description="A robot that receives voice commands to play albums"
          " from your MP3 collection",
