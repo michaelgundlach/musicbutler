@@ -1,42 +1,65 @@
-from mutagen.easyid3 import EasyID3
-import os
 import speech
 import random
 import thread
 import time
+import math
+from locators import FileSearcher
+
+from mutagen.easyid3 import EasyID3
 
 class MusicButler:
     def __init__(self, name):
         self._collection = {}
         self._speechlistener = None
-        self._actions = None
+        self._commands = None
         self.name = name
 
-    def findmusic(self, location):
+    def findmusic(self, location, background=True):
         """
         Scours the given location for all MP3s, and adds them to
-        the butler's collection.
+        the butler's collection.  If background, runs on a separate
+        thread and rebuilds the collection every few hundred files,
+        so that the butler is quickly responsive if not omniscient.
+        Otherwise, blocks until finished.
         """
-        listening = self.islistening()
-        self.stoplistening() # so addsong doesn't keep stopping and starting
+        if not background:
+            self._findmusic(location, rebuild_commands=False)
+        else:
+            thread.start_new_thread(self._findmusic, (location,) )
 
-        for (band, album, song, filename) in ID3Reader(location).read():
-            band, album, song = band.strip(), album.strip(), song.strip()
-            if band.lower().endswith(', the'):
-                band = band[:-5]
-            if band.lower().startswith('the '):
-                band = band[4:]
+        self._rebuild_commands()
 
-            if not band or not album or not song: continue
+    def _findmusic(self, location, rebuild_commands=True):
+        """
+        Scours the given location for all MP3s, and adds them to
+        the butler's collection.  If rebuild_commands and the butler is
+        currently listening, rebuild the list of understood commands
+        every few hundred files.
+        """
+        count, last_count_learned, secs = 0, 0, 0
+        start = time.time()
+        for (band, album, song, locator) in ID3Reader(location).read():
+            self.addsong(band, album, song, locator, rebuild_commands=False)
 
-            self.addsong(band, album, song, filename)
+            count += 1
+            secs_passed = math.floor(time.time() - start)
+            if secs_passed >= secs + 5:
+                secs = secs_passed
+                print "Songs found: %s..." % count
 
-        if listening:
-            self.listen()
+                if rebuild_commands and count - last_count_learned > 200:
+                    last_count_learned = count
+                    self._rebuild_commands()
 
-    def addsong(self, band, album, song, filename):
+    def addsong(self, band, album, song, locator, rebuild_commands=True):
+        """Either locator is a string filename, or a Locator instance that
+        can be later used to fetch the filename.  If rebuild_commands,
+        rebuild the list of voice commands to respond to.
+        """
         def clean(s):
-            s = s.lower()
+            if not s:
+                return ''
+            s = s.strip().lower()
             numbers = ['zero','one','two','three','four','five','six','seven',
                        'eight','nine']
             for (number, word) in enumerate(numbers):
@@ -44,41 +67,53 @@ class MusicButler:
 
             return s.replace('/', ' slash ').strip()
 
-        self._collection.setdefault(clean(band), {}).setdefault(
-                clean(album), set()).add( (clean(song), filename) )
+        band = clean(band)
+        album = clean(album)
+        song = clean(song)
 
-        if self.islistening(): # update our knowledge
-            self.stoplistening()
-            self.startlistening()
+        if band.endswith(', the'):
+            band = band[:-5]
+        if band.startswith('the '):
+            band = band[4:]
+
+        if not band or not album or not song:
+            return
+
+        self._collection.setdefault(band, {}).setdefault(
+                album, set()).add( (song, locator) )
+
+        if rebuild_commands:
+            self._rebuild_commands()
 
     def islistening(self):
         return not not self._speechlistener
 
-    def _addaction(self, actiondict, action, commands, strings):
+    def _addaction(self, commanddict, action, commands, strings):
         for command in commands:
             command = command % strings
-            actiondict["%s, %s" % (self.name, command)] = action
+            commanddict["%s, %s" % (self.name, command)] = action
 
-    def startlistening(self):
+    def _rebuild_commands(self):
+        """Rebuild self._commands from self._collection."""
         collection = self._collection
         name = self.name
-        actions = {}
+        commands = {}
 
         # build a list of commands and actions from our collection
         for (band, albums) in collection.items():
-            self._addaction(actions, (self._playband, band),
+            self._addaction(commands, (self._playband, band),
                 [ "play some %s, any album",
                   "play some %s",
                   "play %s"
                 ], band)
 
-            self._addaction(actions, (self._listalbums, band),
+            self._addaction(commands, (self._listalbums, band),
                 [ "what albums do I have by %s?",
                   "what albums do I have by the band %s?",
                   "what %s albums do I have?"
                 ], band)
 
-            self._addaction(actions, (self._listsongs, band),
+            self._addaction(commands, (self._listsongs, band),
                 [ "what songs do I have by %s?",
                   "what songs do I have by the band %s?",
                   "what %s songs do I have?"
@@ -86,55 +121,57 @@ class MusicButler:
 
             # album-specific commands for this band
             for (album, songs) in albums.items():
-                self._addaction(actions, (self._playalbum, band, album),
+                self._addaction(commands, (self._playalbum, band, album),
                     [ "play %s by %s",
                       "play the album %s by %s",
                       "play %s by the band %s",
                       "play the album %s by the band %s"
                     ], (album, band))
 
-                self._addaction(actions, (self._playalbum, band, album),
+                self._addaction(commands, (self._playalbum, band, album),
                     [ "play some %s, %s",
                       "play %s: %s"
                     ], (band, album))
 
-                self._addaction(actions, (self._playalbum, band, album),
+                self._addaction(commands, (self._playalbum, band, album),
                     [ "play the album %s",
                       "play %s" ], album)
 
-                # got to 2570
                 # song-specific commands for this band and album
-                for (song, filename) in songs:
-                    self._addaction(actions, (self._playsong, band,album,song),
+                for (song, locator) in songs:
+                    self._addaction(commands, (self._playsong, band,album,song),
                         [ "play %s",
                           "play the song %s",
                         ], song)
 
-                    self._addaction(actions, (self._playsong, band,album,song),
+                    self._addaction(commands, (self._playsong, band,album,song),
                         [ "play %s by %s",
                           "play the song %s by %s",
                           "play %s by the band %s",
                           "play the song %s by the band %s"
                         ], (song, band))
 
-        actions["%s, what bands do i have?" % name] = (self._listbands,)
-        actions["%s, what albums do i have?" % name] = (self._listalbums,)
-        actions["%s, what songs do i have?" % name] = (self._listsongs,)
-        actions["%s, stop playing" % name] = (self._stopthemusic,)
-        actions["%s, turn off" % name] = (self._turnoff,)
-        actions["%s, are you there?" % name] = (self._ping,)
-        actions["%s, help!" % name] = (self._help,)
-        actions["%s, more help please" % name] = (self._morehelp,)
-        actions["%s, more help" % name] = (self._morehelp,)
-        actions["What's your name?"] = (self._sayname,)
+        commands["%s, what bands do i have?" % name] = (self._listbands,)
+        commands["%s, what albums do i have?" % name] = (self._listalbums,)
+        commands["%s, what songs do i have?" % name] = (self._listsongs,)
+        commands["%s, stop playing" % name] = (self._stopthemusic,)
+        commands["%s, turn off" % name] = (self._turnoff,)
+        commands["%s, are you there?" % name] = (self._ping,)
+        commands["%s, help!" % name] = (self._help,)
+        commands["%s, more help please" % name] = (self._morehelp,)
+        commands["%s, more help" % name] = (self._morehelp,)
+        commands["What's your name?"] = (self._sayname,)
+
+        self._commands = commands
+
+    def startlistening(self):
+        self._rebuild_commands()
 
         if self.islistening():
             self.stoplistening()
 
-        self._actions = actions
         self._speechlistener = speech.listenfor(
-                #[x for x in actions.keys() if not x.strip().endswith('play')], self._respond_to_command)
-                actions.keys(), self._respond_to_command)
+                self._commands.keys(), self._respond_to_command)
         self.say("Your selection?")
 
     def stoplistening(self):
@@ -148,11 +185,11 @@ class MusicButler:
         speech.say(phrase)
 
     def _respond_to_command(self, phrase, listener):
-        if phrase not in self._actions:
+        if phrase not in self._commands:
             # TODO: is this the right behavior?
             self.say("I don't know the phrase. '%s'" % phrase)
             return
-        command = self._actions[phrase]
+        command = self._commands[phrase]
         function = command[0]
         args = command[1:]
         function(*args)
@@ -208,13 +245,18 @@ class MusicButler:
         collection = self._collection
         if band in collection and album in collection[band]:
             songs = collection[band][album]
-            for (title, filename) in songs:
+            for (title, locator) in songs:
                 if title == song:
                     self.say("Playing %s by %s" % (song, band))
-                    print "Hmm hmm hmm %s" % filename
+                    self._playfile(locator, (band, album, song) )
                     return
 
         self.say("No such song. %s" % song)
+
+    def _playfile(locator, band_album_song):
+        band, album, song = band_album_song
+        filename = locator.filename()
+
 
     def _stopthemusic(self):
         self.say("Stopped.")
@@ -277,46 +319,40 @@ class MusicButler:
         if bandOfChoice:
             titles = [ title
                        for (album, songs) in collection[bandOfChoice].items()
-                       for (title, filename) in songs ]
+                       for (title, locator) in songs ]
         else:
             titles = [ "%s by %s" % (title, band)
                        for band in collection
                        for (album, songs) in collection[band].items()
-                       for (title, filename) in songs ]
+                       for (title, locator) in songs ]
         self._listthings("song", titles, bandOfChoice=bandOfChoice)
+
 
 class ID3Reader(object):
     def __init__(self, location):
-        self._location = location
+        self._searcher = FileSearcher.FileSearcher(location)
 
     def read(self):
         """
         Read all mp3 tag information in our location.
 
-        Returns a list of (artist, album, title, filename) tuples.
+        Returns an iterator of (artist, album, title, locator) tuples.
         """
-        result = []
 
-        for (dirname, dirs, files) in os.walk(self._location):
-            mp3s = [ dirname + '/' + filename for filename in files
-                     if filename.lower().endswith('.mp3') ]
-            print "Adding %s" % dirname
+        for locator in self._searcher.search():
+            try:
+                data = EasyID3(locator.filename_for_tagging())
+            except:
+                continue
+            if 'album' not in data or 'artist' \
+                    not in data or 'title' not in data:
+                continue
+            artist, album, title = data['artist'], \
+                    data['album'], data['title']
 
-            for mp3file in mp3s:
-                try:
-                    data = EasyID3(mp3file)
-                except:
-                    continue
-                if 'album' not in data or 'artist' \
-                        not in data or 'title' not in data:
-                    continue
-                artist, album, title = data['artist'], \
-                        data['album'], data['title']
+            artist = artist if type(artist) is str else artist[0]
+            album = album if type(album) is str else album[0]
+            title = title if type(title) is str else title[0]
 
-                artist = artist if type(artist) is str else artist[0]
-                album = album if type(album) is str else album[0]
-                title = title if type(title) is str else title[0]
+            yield (artist, album, title, locator)
 
-                result.append((artist, album, title, mp3file))
-
-        return result
