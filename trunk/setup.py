@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='musicbutler',
-      version='0.1.4',
+      version='0.1.5',
       py_modules=['musicbutler'],
       install_requires=['speech', 'mutagen'],
 
@@ -9,19 +9,20 @@ setup(name='musicbutler',
          " from your MP3 collection",
 
       long_description="""
-          *** NOTE: This is an alpha product.  It's not quite to the
-          point of playing music yet, which should happen in 0.2.0.***
+          *** NOTE: This is an alpha product.  The example.py file can get you
+          going, but it has no GUI and the underlying mp3play module doesn't
+          work with all mp3s yet for some reason.***
 
           When MusicButler has been told what albums you own, a spoken
           conversation with it might go like this:
 
-            * "Jimmy, what albums do I have?"
+            * "Afred, what albums do I have?"
             * "Here are 3 out of your 58 albums: In Rainbows by Radiohead,
             Deja Vu by Crosby Stills Nash and Young, and Atlanta
             by Alison Krauss."
-            * "Jimmy, what Radiohead albums do I have?"
+            * "Afred, what Radiohead albums do I have?"
             * "You have 2 albums by Radiohead: In Rainbows, and OK Computer."
-            * "Jimmy, play me some Alison Krauss."
+            * "Afred, play me some Alison Krauss, any album."
             * "Playing New Favorite by Alison Krauss."
           \n
           Uses the 'speech' module -- see that on pypi for prerequisites.
@@ -36,7 +37,7 @@ setup(name='musicbutler',
       keywords = "speech recognition music stereo control mp3 robot butler",
 
       classifiers=[
-          'Development Status :: 5 - Production/Stable',
+          'Development Status :: 3 - Alpha',
           'Environment :: Win32 (MS Windows)',
           'License :: OSI Approved :: Apache Software License',
           'Operating System :: Microsoft :: Windows',
