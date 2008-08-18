@@ -1,10 +1,11 @@
-locators.py
-musicbutler.py
+example.py
 setup.py
 dist/musicbutler-0.1-py2.5.egg
 dist/musicbutler-0.1.1-py2.5.egg
 dist/musicbutler-0.1.2-py2.5.egg
 dist/musicbutler-0.1.3-py2.5.egg
+musicbutler/__init__.py
+musicbutler/locators.py
 musicbutler.egg-info/PKG-INFO
 musicbutler.egg-info/SOURCES.txt
 musicbutler.egg-info/dependency_links.txt
