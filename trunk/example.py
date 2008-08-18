@@ -8,7 +8,10 @@ loc = r'michaelg@example.com:My Music'
 loc = r'\\manta\Music'
 # But ssh doesn't work all the way yet :)  Network mapped songs will be
 # copied to a local temp file just before playing, so there's no skipping
-# while the song plays.
+# while the song plays.  However, mp3play seems unhappy with the filenames
+# of the local copies, so all that works for sure now is local music.
+
+loc = 'c:/Documents and Settings/Michael/My Documents/My Music/'
 
 #butler = musicbutler.MusicButler("dra meesha mime us")
 butler = musicbutler.MusicButler("Einstein")
