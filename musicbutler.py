@@ -3,12 +3,16 @@ import random
 import thread
 import time
 import math
+import mp3play
+
 from locators import FileSearcher
 
 from mutagen.easyid3 import EasyID3
 
 class MusicButler:
     def __init__(self, name):
+        self._clip = None
+        self._volumelevel = 100
         self._collection = {}
         self._speechlistener = None
         self._commands = None
@@ -65,7 +69,11 @@ class MusicButler:
             for (number, word) in enumerate(numbers):
                 s = s.replace(str(number), ' %s ' % word)
 
-            return s.replace('/', ' slash ').strip()
+            s = s.replace('/', ' slash ').strip()
+            while '  ' in s:
+                s = s.replace('  ', ' ')
+
+            return s
 
         band = clean(band)
         album = clean(album)
@@ -79,8 +87,9 @@ class MusicButler:
         if not band or not album or not song:
             return
 
-        self._collection.setdefault(band, {}).setdefault(
-                album, set()).add( (song, locator) )
+        album = self._collection.setdefault(band, {}).setdefault(album, [])
+        if (song, locator) not in album:
+            album.append( (song, locator) )
 
         if rebuild_commands:
             self._rebuild_commands()
@@ -101,22 +110,27 @@ class MusicButler:
 
         # build a list of commands and actions from our collection
         for (band, albums) in collection.items():
-            self._addaction(commands, (self._playband, band),
+            self._addaction(commands, (self._playalbum, band),
                 [ "play some %s, any album",
                   "play some %s",
                   "play %s"
                 ], band)
 
+            self._addaction(commands, (self._playsong, band),
+                  [ "play a song by %s",
+                    "play something by %s"
+                  ], band)
+
             self._addaction(commands, (self._listalbums, band),
-                [ "what albums do I have by %s?",
-                  "what albums do I have by the band %s?",
-                  "what %s albums do I have?"
+                [ "what albums do I have by %s",
+                  "what albums do I have by the band %s",
+                  "what %s albums do I have"
                 ], band)
 
             self._addaction(commands, (self._listsongs, band),
-                [ "what songs do I have by %s?",
-                  "what songs do I have by the band %s?",
-                  "what %s songs do I have?"
+                [ "what songs do I have by %s",
+                  "what songs do I have by the band %s",
+                  "what %s songs do I have"
                 ], band)
 
             # album-specific commands for this band
@@ -151,16 +165,42 @@ class MusicButler:
                           "play the song %s by the band %s"
                         ], (song, band))
 
-        commands["%s, what bands do i have?" % name] = (self._listbands,)
-        commands["%s, what albums do i have?" % name] = (self._listalbums,)
-        commands["%s, what songs do i have?" % name] = (self._listsongs,)
+        #commands["%s, help!" % name] = (self._help,)
+        #commands["%s, more help please" % name] = (self._morehelp,)
+        #commands["%s, more help" % name] = (self._morehelp,)
+        commands["%s, are you there" % name] = (self._ping,)
+        #commands["What's your name"] = (self._sayname,)
+        commands["%s, what bands do i have" % name] = (self._listbands,)
+        commands["%s, what albums do i have" % name] = (self._listalbums,)
+        commands["%s, what songs do i have" % name] = (self._listsongs,)
+        commands["%s, pause" % name] = (self._pause, True)
+        commands["%s, unpause" % name] = (self._pause, False)
         commands["%s, stop playing" % name] = (self._stopthemusic,)
+        commands["%s, stop the music" % name] = (self._stopthemusic,)
+        commands["%s, start over" % name] = (self._rewind,)
         commands["%s, turn off" % name] = (self._turnoff,)
-        commands["%s, are you there?" % name] = (self._ping,)
-        commands["%s, help!" % name] = (self._help,)
-        commands["%s, more help please" % name] = (self._morehelp,)
-        commands["%s, more help" % name] = (self._morehelp,)
-        commands["What's your name?"] = (self._sayname,)
+        commands["%s, play a random song" % name] = (self._playsong,)
+        commands["%s, play something" % name] = (self._playsong,)
+
+        numbers = ("zero ten twenty thirty fourty fifty sixty seventy" +
+                   "eighty ninety").split()
+
+        for (i, number) in enumerate(numbers):
+            commands["%s, volume %s" % (name, number)] = (self._volume, i*10)
+
+        self._addaction(commands, (self._volume, 100),
+                ["volume one hundred",
+                 "volume a hundred"
+                ], () )
+
+        commands["%s, louder" % name] = (self._volumechange, True, False)
+        commands["%s, quieter" % name] = (self._volumechange, False, False)
+        commands["%s, much louder" % name] = (self._volumechange, True, True)
+        commands["%s, much quieter" % name] = (self._volumechange, False, True)
+        commands["%s, again please" % name] = (self._repeatcommand, )
+        commands["Why do you suck so much"] = (self.say,
+                "Because my creator is an idiot.")
+        commands["I will kill you."] = (self.say, "That's fair.")
 
         self._commands = commands
 
@@ -192,11 +232,61 @@ class MusicButler:
         command = self._commands[phrase]
         function = command[0]
         args = command[1:]
+        if command[0] != self._repeatcommand:
+            self._lastcommand = function
+            self._lastcommandargs = args
         function(*args)
 
     def _sayname(self):
         self.say("My name is %s.  Always say my name "
                  "first to get my attention." % self.name)
+
+    def _rewind(self):
+        if self._clip and self._clip.isplaying():
+            self._clip.play()
+        else:
+            self.say("Nothing is playing.")
+
+    def _repeatcommand(self):
+        if hasattr(self, "_lastcommand"):
+            self._lastcommand(*self._lastcommandargs)
+
+    def _volume(self, level):
+        if not self._clip or not self._clip.isplaying():
+            return
+        self._volumelevel = level
+        self._clip.volume(self._volumelevel)
+        self.say("Done.")
+
+    def _volumechange(self, increase, big):
+        """Increase or decrease volume by 20%.  If big, go straight to 100%%
+        or 10%%.  This function won't decrease quite all the way to silent.
+        """
+        if not self._clip or not self._clip.isplaying():
+            return
+
+        vol = self._volumelevel
+        if big:
+            target = 100 if increase else 10
+        else:
+            target = vol + 20 if increase else vol - 20
+
+        if increase:
+            self._volumelevel = target if target <= 100 else 100
+        else:
+            self._volumelevel = target if target >= 10 else 10
+        self._clip.volume(self._volumelevel)
+        self.say("Done.")
+
+    def _pause(self, pause):
+        """Pause"""
+        if not self._clip:
+            return
+
+        if self._clip.isplaying() and pause:
+            self._clip.pause()
+        elif self._clip.ispaused() and not pause:
+            self._clip.unpause()
 
     def _help(self):
         message = """
@@ -227,47 +317,88 @@ class MusicButler:
     def _ping(self):
         self.say("Yes")
 
-    def _playband(self, band):
+    def _getalbum(self, band=None, album=None):
+        """Return (band, album, songlist).  If no album is given,
+        choose a random one by the band.  If no band is given, choose
+        a random band.  If the band or album is not known, return
+        (None, None, None).
+        """
         collection = self._collection
-        if band in collection:
-            self._playalbum(band, random.choice(collection[band].keys()))
-        else:
-            self.say("No such band. %s" % band)
-
-    def _playalbum(self, band, album):
-        collection = self._collection
-        if band in collection.keys() and album in collection[band]:
-            self.say("Playing %s by %s" % (album, band))
-        else:
-            self.say("Not found")
-
-    def _playsong(self, band, album, song):
-        collection = self._collection
-        if band in collection and album in collection[band]:
+        try:
+            if not band:
+                band = random.choice(collection.keys())
+            if not album:
+                album = random.choice(collection[band].keys())
             songs = collection[band][album]
+            return (band, album, songs)
+        except:
+            return (None, None, None)
+
+    def _getsong(self, band=None, album=None, song=None):
+        """Return (band, album, song, locator).  If no band is given, choose a
+        random band.  If no album is given, choose a random album by the band.
+        If no song is given, choose a random song from the album.  If the band
+        or album or song is not known, return (None, None, None).
+        """
+        collection = self._collection
+        try:
+            (band, album, songs) = self._getalbum(band, album)
+            if not song:
+                song = random.choice(songs)[0]
             for (title, locator) in songs:
                 if title == song:
-                    self.say("Playing %s by %s" % (song, band))
-                    self._playfile(locator, (band, album, song) )
-                    return
+                    return (band, album, song, locator)
+            else:
+                raise Exception # song name not found, so return (None,)*4
+        except:
+            return (None, None, None, None)
 
-        self.say("No such song. %s" % song)
 
-    def _playfile(locator, band_album_song):
-        band, album, song = band_album_song
+    def _playalbum(self, band=None, album=None):
+        (band, album, songs) = self._getalbum(band, album)
+        if not songs:
+            self.say("Not found")
+            return
+
+        self._stop()
+        self.say("Playing %s: %s" % (band, album) )
+        self._playfile(songs[0][1])
+
+    def _playsong(self, band=None, album=None, song=None):
+        (band, album, song, locator) = self._getsong(band, album, song)
+        if not locator:
+            self.say("Not found")
+            return
+
+        self._stop()
+        self.say("%s: %s" % (band, song) )
+        self._playfile(locator)
+        return
+
+    def _playfile(self, locator):
         filename = locator.filename()
+        self._clip = mp3play.load(filename)
+        self._clip.volume(self._volumelevel)
+        self._clip.play()
 
+    def _stop(self):
+        if self._clip:
+            self._clip.stop()
 
     def _stopthemusic(self):
+        self._stop()
         self.say("Stopped.")
 
     def _turnoff(self):
+        if self._clip:
+            self._clip.stop()
+
         self.say("Goodbye.")
         self.stoplistening()
 
     def _listthings(self, thingname, things, bandOfChoice=None):
-        indexes = range(len(things))
-        random.shuffle(indexes)
+        things = list(things)
+        random.shuffle(things)
 
         if len(things) == 0:
             msg = "You don't have any %ss" % thingname
@@ -292,12 +423,15 @@ class MusicButler:
         msg += ": "
 
         count = min(3, len(things))
-        choices = [ things[indexes[i]] for i in range(count) ]
+        choices = things[ :count]
 
         while len(choices) > 1:
             choice = choices.pop()
             msg += "%s, " % choice
         msg += "and %s." % choices[0]
+
+        for thing in things[-200: ]:
+            print thing
 
         self.say(msg)
 
@@ -338,7 +472,6 @@ class ID3Reader(object):
 
         Returns an iterator of (artist, album, title, locator) tuples.
         """
-
         for locator in self._searcher.search():
             try:
                 data = EasyID3(locator.filename_for_tagging())

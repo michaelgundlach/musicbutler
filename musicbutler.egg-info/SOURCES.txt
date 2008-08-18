@@ -1,4 +1,4 @@
-example.py
+locators.py
 musicbutler.py
 setup.py
 dist/musicbutler-0.1-py2.5.egg
