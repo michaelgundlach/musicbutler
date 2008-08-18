@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='musicbutler',
-      version='0.1.3',
+      version='0.1.4',
       py_modules=['musicbutler'],
       install_requires=['speech', 'mutagen'],
 
@@ -9,9 +9,8 @@ setup(name='musicbutler',
          " from your MP3 collection",
 
       long_description="""
-          *** NOTE: This is an alpha product.  It doesn't actually play
-          music yet -- it just understands commands and runs stub functions
-          for playing music. ***
+          *** NOTE: This is an alpha product.  It's not quite to the
+          point of playing music yet, which should happen in 0.2.0.***
 
           When MusicButler has been told what albums you own, a spoken
           conversation with it might go like this:
@@ -25,12 +24,7 @@ setup(name='musicbutler',
             * "Jimmy, play me some Alison Krauss."
             * "Playing New Favorite by Alison Krauss."
           \n
-          For the required Python 'speech' module to work, you must:\n
-            * Install the Microsoft Speech kit: download
-              and run "SpeechSDK51.exe" from http://tinyurl.com/5m6v2
-            * Then open PythonWin (installable via http://tinyurl.com/5ezco9)
-              and choose Tools | COM MakePY utility | Microsoft
-              Speech Object Library 5.0.\n
+          Uses the 'speech' module -- see that on pypi for prerequisites.
           \n
           Please let me know if you like or use this module - it would make
           my day!
@@ -48,6 +42,7 @@ setup(name='musicbutler',
           'Operating System :: Microsoft :: Windows',
           'Programming Language :: Python',
           'Topic :: Multimedia :: Sound/Audio :: Speech',
+          'Topic :: Multimedia :: Sound/Audio',
           'Topic :: Home Automation',
           'Topic :: Scientific/Engineering :: Human Machine Interfaces',
           'Topic :: Software Development :: Libraries :: Python Modules',
